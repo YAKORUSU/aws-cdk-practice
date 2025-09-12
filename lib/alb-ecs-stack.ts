@@ -23,24 +23,6 @@ export class AlbEcsStack extends cdk.Stack {
     // ECS Cluster
     const cluster = new ecs.Cluster(this, 'EcsCluster', { vpc });
 
-    // IAM Roles をこのスタック内で作成
-    // const ecsTaskRole = new iam.Role(this, 'EcsTaskRole', {
-    //   assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-    //   description: 'Task role for ECS tasks',
-    // });
-
-    // 必要な権限をここに追加（例: S3読み取り）
-    // ecsTaskRole.addManagedPolicy(
-    //   iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess'),
-    // );
-
-    // const ecsExecutionRole = new iam.Role(this, 'EcsExecutionRole', {
-    //   assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-    //   managedPolicies: [
-    //     iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'),
-    //   ],
-    // });
-
     // ECS task role (app が S3 等にアクセスするための role)
     this.ecsTaskRole = new iam.Role(this, 'EcsTaskRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
@@ -89,6 +71,8 @@ export class AlbEcsStack extends cdk.Stack {
       securityGroups: [ecsSecurityGroup],
       assignPublicIp: false,
       vpcSubnets: { subnets: props.privateSubnets },
+      minHealthyPercent: 100,
+      maxHealthyPercent: 200,
     });
     this.ecsService = service;
 
@@ -103,7 +87,6 @@ export class AlbEcsStack extends cdk.Stack {
     const listener = this.alb.addListener('HttpListener', {
       port: 80,
       open: true,
-      defaultAction: elbv2.ListenerAction.fixedResponse(404, { contentType: 'text/plain', messageBody: 'Not found' }),
     });
 
     // TargetGroup

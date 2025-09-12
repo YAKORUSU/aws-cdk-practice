@@ -37,7 +37,6 @@ const albEcsStack = new AlbEcsStack(app, 'AlbEcsStack', {
   vpc: vpcStack.vpc,
   albSecurityGroup: securityStack.albSecurityGroup,
   ecsSecurityGroup: securityStack.ecsSecurityGroup,
-  // ecsTaskRole: securityStack.ecsTaskRole,
   privateSubnets: vpcStack.privateSubnets,
 });
 

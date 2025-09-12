@@ -41,8 +41,6 @@ export class SecurityStack extends cdk.Stack {
     });
     this.rdsSecurityGroup.addIngressRule(this.ecsSecurityGroup, ec2.Port.tcp(3306), 'Allow ECS to RDS traffic');
 
-    new cdk.CfnOutput(this, 'EcsTaskRoleArn', { value: this.ecsTaskRole.roleArn });
-    new cdk.CfnOutput(this, 'EcsExecutionRoleArn', { value: this.ecsExecutionRole.roleArn });
     new cdk.CfnOutput(this, 'AlbSecurityGroupId', { value: this.albSecurityGroup.securityGroupId });
     new cdk.CfnOutput(this, 'EcsSecurityGroupId', { value: this.ecsSecurityGroup.securityGroupId });
     new cdk.CfnOutput(this, 'RdsSecurityGroupId', { value: this.rdsSecurityGroup.securityGroupId });
