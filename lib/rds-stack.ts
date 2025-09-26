@@ -14,6 +14,8 @@ export class RdsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: RdsStackProps) {
     super(scope, id, props);
 
+    // console.log('privateSubnets:', props.privateSubnets.map(s => s.subnetId));
+
     // シークレットでDB認証情報を管理（推奨）
     const dbSecret = new secrets.Secret(this, 'RdsSecret', {
       secretName: `${this.stackName}-db-credentials`,
@@ -25,13 +27,15 @@ export class RdsStack extends cdk.Stack {
       },
     });
 
+    // サブネットグループの作成
     const subnetGroup = new rds.SubnetGroup(this, 'RdsSubnetGroup', {
       vpc: props.vpc,
       vpcSubnets: { subnets: props.privateSubnets },
       description: 'Subnet group for RDS',
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
-
+    
+    // RDSインスタンスの作成
     this.rdsInstance = new rds.DatabaseInstance(this, 'AppRds', {
       engine: rds.DatabaseInstanceEngine.mysql({ version: rds.MysqlEngineVersion.VER_8_4_3 }),
       vpc: props.vpc,

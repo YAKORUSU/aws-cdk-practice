@@ -16,10 +16,10 @@ export class MonitoringStack extends cdk.Stack {
 
     const topic = new sns.Topic(this, 'AlarmTopic');
 
-    // ECS CPU > 80% (例)
+    // ECS CPU > 80%
     const ecsCpuAlarm = new cw.Alarm(this, 'EcsCpuAlarm', {
       metric: props.ecsService.metricCpuUtilization(),
-      threshold: 80,
+      threshold: 0,
       evaluationPeriods: 2,
       comparisonOperator: cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
       treatMissingData: cw.TreatMissingData.NOT_BREACHING,
@@ -56,7 +56,7 @@ export class MonitoringStack extends cdk.Stack {
     });
     rdsStorageAlarm.addAlarmAction(new cw_actions.SnsAction(topic));
 
-    // (オプション) 通知先をメールなどに追加する場合：
+    // 通知先をメールなどに追加する場合：
     // import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
     // topic.addSubscription(new subs.EmailSubscription('ops@example.com'));
 

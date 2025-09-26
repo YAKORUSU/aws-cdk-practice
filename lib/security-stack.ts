@@ -41,8 +41,36 @@ export class SecurityStack extends cdk.Stack {
     });
     this.rdsSecurityGroup.addIngressRule(this.ecsSecurityGroup, ec2.Port.tcp(3306), 'Allow ECS to RDS traffic');
 
+    // ECS タスク用のロール（アプリが AWS リソースにアクセスするためのロール）
+    this.ecsTaskRole = new iam.Role(this, 'EcsTaskRole', {
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      description: 'Task role for ECS tasks (app role)',
+    });
+
+    // ECS タスク実行用ロール（ECR からイメージを pull する権限を付与）
+    this.ecsExecutionRole = new iam.Role(this, 'EcsExecutionRole', {
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          'service-role/AmazonECSTaskExecutionRolePolicy'
+        ),
+      ],
+    });
+
+    // ECR プライベートリポジトリから pull できるように権限追加
+    this.ecsExecutionRole.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'ecr:GetAuthorizationToken',
+        'ecr:BatchGetImage',
+        'ecr:GetDownloadUrlForLayer',
+      ],
+      resources: ['*'],
+    }));
+
     new cdk.CfnOutput(this, 'AlbSecurityGroupId', { value: this.albSecurityGroup.securityGroupId });
     new cdk.CfnOutput(this, 'EcsSecurityGroupId', { value: this.ecsSecurityGroup.securityGroupId });
     new cdk.CfnOutput(this, 'RdsSecurityGroupId', { value: this.rdsSecurityGroup.securityGroupId });
+    new cdk.CfnOutput(this, 'EcsTaskRoleArn', { value: this.ecsTaskRole.roleArn });
+    new cdk.CfnOutput(this, 'EcsExecutionRoleArn', { value: this.ecsExecutionRole.roleArn });
   }
 }

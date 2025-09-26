@@ -1,69 +1,46 @@
 import { Construct } from 'constructs';
 import * as cdk from 'aws-cdk-lib';
-import {
-  aws_ec2 as ec2,
-  aws_ecs as ecs,
-  aws_elasticloadbalancingv2 as elbv2,
-  aws_logs as logs,
-  aws_iam as iam,
-} from 'aws-cdk-lib';
+import { aws_ec2 as ec2, aws_ecs as ecs, aws_elasticloadbalancingv2 as elbv2, aws_logs as logs, aws_iam as iam, aws_ecr as ecr } from 'aws-cdk-lib';
 
 interface AlbEcsStackProps extends cdk.StackProps {
   vpc: ec2.Vpc;
   albSecurityGroup: ec2.SecurityGroup;
   ecsSecurityGroup: ec2.SecurityGroup;
-  privateSubnets: ec2.ISubnet[];
+  publicSubnets: ec2.ISubnet[];
+  // privateSubnets: ec2.ISubnet[];
+  dockerImageUri: string; // ECR URI
 }
 
 export class AlbEcsStack extends cdk.Stack {
   public readonly ecsService: ecs.FargateService;
   public readonly alb: elbv2.ApplicationLoadBalancer;
-  public readonly ecsTaskRole: iam.Role;
-  public readonly ecsExecutionRole: iam.Role;
-  public readonly targetGroup: elbv2.ApplicationTargetGroup; // ★追加
+  public readonly targetGroup: elbv2.ApplicationTargetGroup;
 
   constructor(scope: Construct, id: string, props: AlbEcsStackProps) {
     super(scope, id, props);
 
-    const { vpc, albSecurityGroup, ecsSecurityGroup } = props;
+    const { vpc, albSecurityGroup, ecsSecurityGroup, publicSubnets, dockerImageUri } = props;
 
     // ECS Cluster
     const cluster = new ecs.Cluster(this, 'EcsCluster', { vpc });
 
-    // ECS task role (アプリがS3等にアクセスするためのrole)
-    this.ecsTaskRole = new iam.Role(this, 'EcsTaskRole', {
+    // ECS Task Role
+    const ecsTaskRole = new iam.Role(this, 'EcsTaskRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-      description: 'Task role for ECS tasks (app role)',
+      description: 'Task role for ECS tasks',
     });
 
-    // S3の読み取り権限（例）
-    this.ecsTaskRole.addToPolicy(
-      new iam.PolicyStatement({
-        actions: ['s3:GetObject', 's3:ListBucket'],
-        resources: [
-          'arn:aws:s3:::your-bucket-name',
-          'arn:aws:s3:::your-bucket-name/*',
-        ],
-      }),
-    );
-
-    // ECS execution role (タスク実行用)
-    this.ecsExecutionRole = new iam.Role(this, 'EcsExecutionRole', {
+    // ECS Execution Role (ECRからpullするため)
+    const ecsExecutionRole = new iam.Role(this, 'EcsExecutionRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName(
-          'service-role/AmazonECSTaskExecutionRolePolicy',
-        ),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'),
       ],
     });
-
-    // Task Definition
-    const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu: 256,
-      memoryLimitMiB: 512,
-      taskRole: this.ecsTaskRole,
-      executionRole: this.ecsExecutionRole,
-    });
+    ecsExecutionRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['ecr:GetAuthorizationToken','ecr:BatchGetImage','ecr:GetDownloadUrlForLayer'],
+      resources: ['*'],
+    }));
 
     // LogGroup
     const logGroup = new logs.LogGroup(this, 'ContainerLogGroup', {
@@ -71,8 +48,22 @@ export class AlbEcsStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_WEEK,
     });
 
+    // Task Definition
+    const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
+      cpu: 256,
+      memoryLimitMiB: 512,
+      taskRole: ecsTaskRole,
+      executionRole: ecsExecutionRole,
+    });
+
+    // コンテナに ECR イメージを指定
+    // ECRの場合は fromEcrRepository を推奨
+    const repoName = dockerImageUri.split('/').pop()!.split(':')[0]; // nginx-repo
+    const tag = dockerImageUri.split(':')[1] || 'latest';
+    const repo = ecr.Repository.fromRepositoryName(this, 'Repo', repoName);
+
     const container = taskDef.addContainer('AppContainer', {
-      image: ecs.ContainerImage.fromRegistry('nginx:latest'), // 実運用では ECR を指定
+      image: ecs.ContainerImage.fromEcrRepository(repo, tag),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'app', logGroup }),
     });
     container.addPortMappings({ containerPort: 80 });
@@ -82,11 +73,11 @@ export class AlbEcsStack extends cdk.Stack {
       cluster,
       taskDefinition: taskDef,
       desiredCount: 2,
-      securityGroups: [ecsSecurityGroup],
-      assignPublicIp: false,
-      vpcSubnets: { subnets: props.privateSubnets },
       minHealthyPercent: 100,
       maxHealthyPercent: 200,
+      assignPublicIp: false,
+      securityGroups: [ecsSecurityGroup],
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
     });
 
     // ALB
@@ -94,7 +85,7 @@ export class AlbEcsStack extends cdk.Stack {
       vpc,
       internetFacing: true,
       securityGroup: albSecurityGroup,
-      vpcSubnets: { subnets: [vpc.publicSubnets[0], vpc.publicSubnets[1]] },
+      vpcSubnets: { subnets: publicSubnets },
     });
 
     const listener = this.alb.addListener('HttpListener', {
@@ -117,6 +108,7 @@ export class AlbEcsStack extends cdk.Stack {
     listener.addTargetGroups('AddTG', { targetGroups: [this.targetGroup] });
 
     // AutoScaling
+    // 最小値2、最大値6
     const scalable = this.ecsService.autoScaleTaskCount({
       minCapacity: 2,
       maxCapacity: 6,
@@ -126,5 +118,30 @@ export class AlbEcsStack extends cdk.Stack {
       scaleInCooldown: cdk.Duration.seconds(60),
       scaleOutCooldown: cdk.Duration.seconds(60),
     });
+
+    // RDSアクセス用踏み台
+    // Bastion Host
+    const bastion = new ec2.Instance(this, "BastionHost", { 
+      vpc, 
+      instanceType: new ec2.InstanceType("t3.micro"), 
+      machineImage: ec2.MachineImage.latestAmazonLinux2023(), 
+      keyName: "soga-s-test",
+      allowAllOutbound: true, //外部通信許可
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+    });
+    
+    // SSM用のロール作成
+    bastion.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonSSMManagedInstanceCore"));
+    bastion.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonEC2ReadOnlyAccess"));
+    bastion.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("CloudWatchAgentServerPolicy"));
+    bastion.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonSSMFullAccess"));
+    bastion.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonS3ReadOnlyAccess"));
+    bastion.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("CloudWatchLogsFullAccess"));
+
+    // Bastion HostのElastic IPを割り当て
+    const publicSubnet = vpc.publicSubnets[0];
+    (bastion.node.defaultChild as ec2.CfnInstance).subnetId = publicSubnet.subnetId;
+    bastion.connections.allowFrom(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.tcp(22), 'Allow SSH from VPC');
+    bastion.connections.allowTo(ecsSecurityGroup, ec2.Port.tcp(3306), 'Allow MySQL access to ECS SG');
   }
 }
