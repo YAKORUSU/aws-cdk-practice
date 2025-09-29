@@ -28,7 +28,7 @@ export class VpcStack extends cdk.Stack {
 
     this.vpc = new ec2.Vpc(this, 'MyVpc', {
       ipAddresses: ec2.IpAddresses.cidr('10.0.0.0/16'),
-      maxAzs: 2, // AZは2つに制限
+      maxAzs: 2, // AZは2つ
       natGateways: 0, // NAT不要
       subnetConfiguration: [
         {
@@ -44,7 +44,7 @@ export class VpcStack extends cdk.Stack {
       ],
     });
 
-    // VpcStack に VPC Endpoint を追加
+    // VpcStackにVPC Endpointを追加
     this.vpc.addInterfaceEndpoint('EcrApiEndpoint', {
       service: ec2.InterfaceVpcEndpointAwsService.ECR,
       subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },

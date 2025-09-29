@@ -27,7 +27,7 @@ export class MonitoringStack extends cdk.Stack {
     });
     ecsCpuAlarm.addAlarmAction(new cw_actions.SnsAction(topic));
 
-    // ECS Pending Task Count > 0 -> スケール失敗/遅延の兆候
+    // ECS Pending Task Count > 0 -> スケール失敗
     const pendingMetric = props.ecsService.metric('PendingTaskCount', { statistic: 'Average', period: cdk.Duration.minutes(1) });
     const pendingAlarm = new cw.Alarm(this, 'EcsPendingAlarm', {
       metric: pendingMetric,

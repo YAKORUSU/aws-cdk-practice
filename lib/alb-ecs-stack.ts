@@ -30,7 +30,7 @@ export class AlbEcsStack extends cdk.Stack {
       description: 'Task role for ECS tasks',
     });
 
-    // S3 読み取り専用ポリシーを付与
+    // S3 ReadOnlyAccess ポリシー
     ecsTaskRole.addManagedPolicy(
       iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess')
     );
@@ -61,8 +61,7 @@ export class AlbEcsStack extends cdk.Stack {
       executionRole: ecsExecutionRole,
     });
 
-    // コンテナに ECR イメージを指定
-    // ECRの場合は fromEcrRepository を推奨
+    // コンテナに ECR イメージ指定
     const repoName = dockerImageUri.split('/').pop()!.split(':')[0]; // nginx-repo
     const tag = dockerImageUri.split(':')[1] || 'latest';
     const repo = ecr.Repository.fromRepositoryName(this, 'Repo', repoName);

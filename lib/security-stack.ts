@@ -11,8 +11,6 @@ export class SecurityStack extends cdk.Stack {
   public readonly ecsSecurityGroup: ec2.SecurityGroup;
   public readonly rdsSecurityGroup: ec2.SecurityGroup;
   public readonly bastionSecurityGroup: ec2.SecurityGroup;
-  // public readonly ecsTaskRole: iam.Role;
-  // public readonly ecsExecutionRole: iam.Role;
 
   constructor(scope: Construct, id: string, props: SecurityStackProps) {
     super(scope, id, props);
@@ -52,42 +50,9 @@ export class SecurityStack extends cdk.Stack {
     this.rdsSecurityGroup.addIngressRule(this.bastionSecurityGroup, ec2.Port.tcp(3306), 'Allow Bastion to RDS traffic');
 
 
-    // // ECS タスク用のロール（アプリが AWS リソースにアクセスするためのロール）
-    // this.ecsTaskRole = new iam.Role(this, 'EcsTaskRole', {
-    //   assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-    //   description: 'Task role for ECS tasks (app role)',
-    // });
-
-    // // S3 読み取り専用ポリシーを付与
-    // this.ecsTaskRole.addManagedPolicy(
-    //   iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess')
-    // );
-
-    // // ECS タスク実行用ロール（ECR からイメージを pull する権限を付与）
-    // this.ecsExecutionRole = new iam.Role(this, 'EcsExecutionRole', {
-    //   assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-    //   managedPolicies: [
-    //     iam.ManagedPolicy.fromAwsManagedPolicyName(
-    //       'service-role/AmazonECSTaskExecutionRolePolicy'
-    //     ),
-    //   ],
-    // });
-
-    // ECR プライベートリポジトリから pull できるように権限追加
-    // this.ecsExecutionRole.addToPolicy(new iam.PolicyStatement({
-    //   actions: [
-    //     'ecr:GetAuthorizationToken',
-    //     'ecr:BatchGetImage',
-    //     'ecr:GetDownloadUrlForLayer',
-    //   ],
-    //   resources: ['*'],
-    // }));
-
     // 出力
     new cdk.CfnOutput(this, 'AlbSecurityGroupId', { value: this.albSecurityGroup.securityGroupId });
     new cdk.CfnOutput(this, 'EcsSecurityGroupId', { value: this.ecsSecurityGroup.securityGroupId });
     new cdk.CfnOutput(this, 'RdsSecurityGroupId', { value: this.rdsSecurityGroup.securityGroupId });
-    // new cdk.CfnOutput(this, 'EcsTaskRoleArn', { value: this.ecsTaskRole.roleArn });
-    // new cdk.CfnOutput(this, 'EcsExecutionRoleArn', { value: this.ecsExecutionRole.roleArn });
   }
 }
