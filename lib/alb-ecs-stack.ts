@@ -6,8 +6,8 @@ interface AlbEcsStackProps extends cdk.StackProps {
   vpc: ec2.Vpc;
   albSecurityGroup: ec2.SecurityGroup;
   ecsSecurityGroup: ec2.SecurityGroup;
+  bastionSecurityGroup: ec2.SecurityGroup;
   publicSubnets: ec2.ISubnet[];
-  // privateSubnets: ec2.ISubnet[];
   dockerImageUri: string; // ECR URI
 }
 
@@ -29,6 +29,11 @@ export class AlbEcsStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       description: 'Task role for ECS tasks',
     });
+
+    // S3 読み取り専用ポリシーを付与
+    ecsTaskRole.addManagedPolicy(
+      iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess')
+    );
 
     // ECS Execution Role (ECRからpullするため)
     const ecsExecutionRole = new iam.Role(this, 'EcsExecutionRole', {
@@ -107,7 +112,7 @@ export class AlbEcsStack extends cdk.Stack {
     });
     listener.addTargetGroups('AddTG', { targetGroups: [this.targetGroup] });
 
-    // AutoScaling
+    // AutoScaling(70%のCPU使用率でスケール)
     // 最小値2、最大値6
     const scalable = this.ecsService.autoScaleTaskCount({
       minCapacity: 2,
@@ -115,8 +120,8 @@ export class AlbEcsStack extends cdk.Stack {
     });
     scalable.scaleOnCpuUtilization('CpuScaling', {
       targetUtilizationPercent: 70,
-      scaleInCooldown: cdk.Duration.seconds(60),
-      scaleOutCooldown: cdk.Duration.seconds(60),
+      scaleInCooldown: cdk.Duration.seconds(60), // CPU使用率が70%を下回ってからスケールインするまでの時間
+      scaleOutCooldown: cdk.Duration.seconds(60), // CPU使用率が70%を超えてからスケールアウトするまでの時間
     });
 
     // RDSアクセス用踏み台
@@ -124,24 +129,24 @@ export class AlbEcsStack extends cdk.Stack {
     const bastion = new ec2.Instance(this, "BastionHost", { 
       vpc, 
       instanceType: new ec2.InstanceType("t3.micro"), 
-      machineImage: ec2.MachineImage.latestAmazonLinux2023(), 
+      // machineImage: ec2.MachineImage.latestAmazonLinux({
+      //   generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+      // }),
+      machineImage: ec2.MachineImage.latestAmazonLinux2(),
       keyName: "soga-s-test",
       allowAllOutbound: true, //外部通信許可
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      securityGroup: props.bastionSecurityGroup,
     });
     
-    // SSM用のロール作成
+    // SSM用のIAMポリシーをアタッチ
     bastion.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonSSMManagedInstanceCore"));
-    bastion.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonEC2ReadOnlyAccess"));
-    bastion.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("CloudWatchAgentServerPolicy"));
-    bastion.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonSSMFullAccess"));
-    bastion.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonS3ReadOnlyAccess"));
-    bastion.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName("CloudWatchLogsFullAccess"));
 
-    // Bastion HostのElastic IPを割り当て
-    const publicSubnet = vpc.publicSubnets[0];
-    (bastion.node.defaultChild as ec2.CfnInstance).subnetId = publicSubnet.subnetId;
-    bastion.connections.allowFrom(ec2.Peer.ipv4(vpc.vpcCidrBlock), ec2.Port.tcp(22), 'Allow SSH from VPC');
-    bastion.connections.allowTo(ecsSecurityGroup, ec2.Port.tcp(3306), 'Allow MySQL access to ECS SG');
+    // ユーザーがインスタンスに接続できるようにする
+    bastion.role.addToPrincipalPolicy(new iam.PolicyStatement({
+      actions: ["ssm:StartSession"],
+      resources: [`*`],
+    }));
+
   }
 }

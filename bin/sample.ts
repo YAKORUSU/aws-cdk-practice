@@ -36,8 +36,9 @@ const albEcsStack = new AlbEcsStack(app, 'AlbEcsStack', {
   vpc: vpcStack.vpc,
   albSecurityGroup: securityStack.albSecurityGroup,
   ecsSecurityGroup: securityStack.ecsSecurityGroup,
+  bastionSecurityGroup: securityStack.bastionSecurityGroup,
   publicSubnets: vpcStack.publicSubnets,
-  dockerImageUri: '330020306349.dkr.ecr.ap-northeast-1.amazonaws.com/nginx-repo:latest',
+  dockerImageUri: '330020306349.dkr.ecr.ap-northeast-1.amazonaws.com/nginx-repo:latest', // ECR URI
 });
 
 // 5. Monitoring Stack（ALB + ECS + RDS依存）

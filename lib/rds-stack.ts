@@ -37,6 +37,8 @@ export class RdsStack extends cdk.Stack {
     
     // RDSインスタンスの作成
     this.rdsInstance = new rds.DatabaseInstance(this, 'AppRds', {
+      // インスタンス指定(T3.microは無料枠対象)
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
       engine: rds.DatabaseInstanceEngine.mysql({ version: rds.MysqlEngineVersion.VER_8_4_3 }),
       vpc: props.vpc,
       vpcSubnets: { subnets: props.privateSubnets },

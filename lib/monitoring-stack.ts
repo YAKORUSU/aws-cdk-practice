@@ -2,6 +2,7 @@ import { Construct } from 'constructs';
 import * as cdk from 'aws-cdk-lib';
 import { aws_cloudwatch as cw, aws_sns as sns, aws_cloudwatch_actions as cw_actions } from 'aws-cdk-lib';
 import { aws_elasticloadbalancingv2 as elbv2, aws_ecs as ecs, aws_rds as rds } from 'aws-cdk-lib';
+import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
 
 interface MonitoringStackProps extends cdk.StackProps {
   alb: elbv2.IApplicationLoadBalancer;
@@ -19,7 +20,7 @@ export class MonitoringStack extends cdk.Stack {
     // ECS CPU > 80%
     const ecsCpuAlarm = new cw.Alarm(this, 'EcsCpuAlarm', {
       metric: props.ecsService.metricCpuUtilization(),
-      threshold: 0,
+      threshold: 80,
       evaluationPeriods: 2,
       comparisonOperator: cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
       treatMissingData: cw.TreatMissingData.NOT_BREACHING,
@@ -37,7 +38,7 @@ export class MonitoringStack extends cdk.Stack {
     pendingAlarm.addAlarmAction(new cw_actions.SnsAction(topic));
 
     // ALB ターゲット 5xx (>5回 / 1分 を 5 分連続)
-    const alb5xxMetric = props.targetGroup.metricHttpCodeTarget(elbv2.HttpCodeTarget.TARGET_5XX_COUNT, { period: cdk.Duration.minutes(1) });
+    const alb5xxMetric = props.targetGroup.metric('HTTPCode_Target_5XX_Count', { period: cdk.Duration.minutes(1) });
     const alb5xxAlarm = new cw.Alarm(this, 'Alb5xxAlarm', {
       metric: alb5xxMetric,
       threshold: 5,
@@ -46,8 +47,8 @@ export class MonitoringStack extends cdk.Stack {
     });
     alb5xxAlarm.addAlarmAction(new cw_actions.SnsAction(topic));
 
-    // RDS FreeStorageSpace < 20% of 20GB (~4GB) を閾値にアラーム
     const rdsFreeMetric = props.rdsInstance.metricFreeStorageSpace();
+    // RDS スペース80%使用を閾値にアラーム
     const rdsStorageAlarm = new cw.Alarm(this, 'RdsStorageAlarm', {
       metric: rdsFreeMetric,
       threshold: 4 * 1024 * 1024 * 1024, // 4GB
@@ -56,9 +57,18 @@ export class MonitoringStack extends cdk.Stack {
     });
     rdsStorageAlarm.addAlarmAction(new cw_actions.SnsAction(topic));
 
+    // コネクション数が多い場合のアラームも追加可能
+    const rdsConnMetric = props.rdsInstance.metricDatabaseConnections();
+    const rdsConnAlarm = new cw.Alarm(this, 'RdsConnAlarm', {
+      metric: rdsConnMetric,
+      threshold: 80,
+      evaluationPeriods: 1,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    });
+    rdsConnAlarm.addAlarmAction(new cw_actions.SnsAction(topic));
+
     // 通知先をメールなどに追加する場合：
-    // import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
-    // topic.addSubscription(new subs.EmailSubscription('ops@example.com'));
+    topic.addSubscription(new subs.EmailSubscription('soga-s@m.sus-g.co.jp'));
 
     new cdk.CfnOutput(this, 'AlarmTopicArn', { value: topic.topicArn });
   }

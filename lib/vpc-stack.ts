@@ -68,17 +68,21 @@ export class VpcStack extends cdk.Stack {
       subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
     });
 
+    // Bastion Host用エンドポイント
+    this.vpc.addInterfaceEndpoint('SsmEndpoint', {
+      service: ec2.InterfaceVpcEndpointAwsService.SSM,
+      subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+    });
+
     // 出力
     console.log(
       'privateSubnets:',
       this.privateSubnets.map((s) => s.subnetId)
     );
-
     new cdk.CfnOutput(this, 'VpcId', { value: this.vpc.vpcId });
     new cdk.CfnOutput(this, 'PublicSubnets', {
       value: this.vpc.publicSubnets.map((s) => s.subnetId).join(','),
     });
-
     new cdk.CfnOutput(this, 'PrivateSubnets', { 
       value: this.isolatedSubnets.map((s) => s.subnetId).join(','),
     });
